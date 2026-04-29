@@ -189,14 +189,12 @@ class KVManager {
 
     async popQueue() {
         const queue = await this.getQueue();
-        const finishedTask = queue.shift(); // حذف تسک اول که تمام شده
+        if (queue.length === 0) return { nextTask: null };
+    
+        const nextTask = queue.shift(); // ← اولین نفر صف = همون که باید بعدی اجرا بشه
         await this.kv.put("queue_list", JSON.stringify(queue));
-        
-        // حالا آیتم اولِ جدید (اگر وجود داشته باشد) را برمی‌گردانیم
-        return { 
-            finishedTask, 
-            nextTask: queue[0] || null 
-        };
+    
+        return { nextTask };
     }
 
     async clearQueue() {
