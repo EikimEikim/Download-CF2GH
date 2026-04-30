@@ -961,7 +961,7 @@ class CommandHandler {
     
         // حالت حذف کل
         if (args[0] === ".") {
-            await this.github.dispatch("wipe_storage", {
+            await this.github.triggerWorkflow("wipe_storage", {
                 target_path: "downloads/",
                 tg_chat_id: String(chatId),
                 tg_message_id: String(msgId)
@@ -995,7 +995,7 @@ class CommandHandler {
         }
     
         // ارسال لیست مسیرها به گیت‌هاب
-        await this.github.dispatch("wipe_storage", {
+        await this.github.triggerWorkflow("wipe_storage", {
             target_path: paths.join(","),
             tg_chat_id: String(chatId),
             tg_message_id: String(msgId)
@@ -1805,7 +1805,7 @@ class CommandHandler {
                 
                 // داخل task_failed
                 if (nextTask) {
-                    await this.runNextTask(nextTask);
+                    await this.startNextTask(nextTask);
                     const remainingQueue = await this.kv.getQueue();
                     await this.updateQueuePositionMessages(remainingQueue);
                 }
@@ -1828,66 +1828,8 @@ class CommandHandler {
         }
     }
     
-    
-    async addDownloadTask(link, chatId, messageId) {
-    // ۱. دریافت لیست فعلی صف
-        let queue = await this.kv.env.KV.get("queue_list", { type: "json" }) || [];
-        
-        // ۲. اضافه کردن تسک جدید (شامل لینک و اطلاعات تلگرام برای نوتیفیکیشن)
-        queue.push({ url: link, tg_chat_id: chatId, tg_message_id: messageId });
-        await this.kv.env.KV.put("queue_list", JSON.stringify(queue));
-        
-        // ۳. بررسی اینکه آیا تسکی در حال اجراست یا خیر
-        let currentTask = await this.kv.env.KV.get("current_task", { type: "json" });
-        
-        if (!currentTask) {
-            await this.runNextTask();
-        } else {
-            await this.telegram.sendMessage(chatId, "⏳ Link added to queue. It will start automatically.", messageId);
-        }
-    }
-    
-    async runNextTask(nextTask) {
-        // ۱. اگر ورودی نداشتیم (یعنی صفی وجود نداشت)، وضعیت رو خالی کن و خارج شو
-        if (!nextTask) {
-            await this.kv.clearCurrentTask();
-            return;
-        }
-    
-        // ۲. آماده‌سازی متن پیام شروع پردازش
-        const setupText = "⚙️ <b>Processing started...</b>\nStarting Github Actions...";
-        
-        // ۳. تصمیم‌گیری برای ادیت یا ارسال پیام جدید
-        // از فیلد queueMessageId که موقع /link ذخیره کردیم استفاده می‌کنیم
-        let statusMsgId = nextTask.queueMessageId;
-        const chatId = nextTask.chatId || nextTask.tg_chat_id;
-    
-        if (statusMsgId) {
-            // اگر این لینک قبلاً توی صف بوده و پیام "You are 5/11" داره، همون رو ادیت کن
-            await this.telegram.editMessageText(chatId, statusMsgId, setupText);
-        } else {
-            // اگر صف خالی بود و لینک مستقیم رفت برای دانلود، یک پیام جدید بفرست
-            const sent = await this.telegram.sendMessage(chatId, setupText);
-            statusMsgId = sent.result.message_id;
-        }
-    
-        // ۴. به‌روزرسانی وضعیت "تسک فعلی" در KV با اطلاعات کامل و آیدی پیام نهایی
-        const activeTask = { 
-            ...nextTask,
-            chatId: String(chatId),
-            tg_chat_id: String(chatId),
-            statusMessageId: String(statusMsgId),
-            tg_message_id: String(statusMsgId),
-        };
-        await this.kv.setCurrentTask(activeTask);
-    
-        // ۵. ارسال دستور نهایی به گیت‌هاب
-        await this.github.sendDownloadRequest({
-            url: activeTask.url,
-            chatId: String(chatId),
-            statusMessageId: String(statusMsgId),
-        });
-    }
+
+
 
 }
 // ──────────────────────────────────────────────────────────────
