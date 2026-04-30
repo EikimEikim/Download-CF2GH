@@ -1,15 +1,17 @@
 <div align="center">
+
   <br>
-  <a href="https://github.com/CikimCikim/Download-CF2GH/actions/workflows/deploy.yml">
+
+  <a href="../../actions/workflows/deploy.yml">
     <img src="https://img.shields.io/badge/🚀_RUN_MANUAL_DEPLOY-2ea44f?style=for-the-badge&logo=cloudflare&logoColor=white" width="450" alt="Deploy Button">
   </a>
+
   <br>
   <p><i>Click above to trigger the GitHub Action manually</i></p>
-</div>
 
+  <br>
 
-
-یک ربات تلگرامی بر پایه **Cloudflare Workers** که از **GitHub** به‌عنوان فضای ذخیره‌سازی فایل و **KV** برای کش استفاده می‌کند.
+  <p>یک ربات تلگرامی بر پایه <strong>Cloudflare Workers</strong> که از <strong>GitHub</strong> به‌عنوان فضای ذخیره‌سازی فایل و <strong>KV</strong> برای کش استفاده می‌کند.</p>
 
 </div>
 
@@ -28,6 +30,8 @@
 - [محدودیت‌های پلن رایگان](#-محدودیتهای-پلن-رایگان)
 
 ---
+
+<div dir="rtl">
 
 ## 🌟 معرفی پروژه
 
@@ -556,9 +560,9 @@ https://my-telegram-bot.username.workers.dev/setup
 └── 📁 downloads/         ← فایل‌های دانلود‌شده اینجا ذخیره می‌شن
 ```
 
-<div dir="rtl">
-
 ---
+
+<div dir="rtl">
 
 ## ❓ سوالات رایج
 
