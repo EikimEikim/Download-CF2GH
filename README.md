@@ -431,6 +431,20 @@ Value:  https://my-telegram-bot.username.workers.dev
 
 <div dir="rtl">
 
+
+## ⚙️ مرحله ۴.۵ — فعال‌سازی دسترسی نوشتن برای Actions
+
+> ⚠️ **مهم:** بدون این تنظیم، workflow های `download` و `wipe` نمی‌تونن فایل commit و push کنن.
+
+```
+۱. توی ریپوزیتوری فورک‌شده‌ات برو به **Settings**
+۲. از منوی سمت چپ روی **Actions** کلیک کن
+۳. از زیرمنو **General** رو انتخاب کن
+۴. تا پایین صفحه اسکرول کن تا بخش **Workflow permissions** رو ببینی
+۵. گزینه **Read and write permissions** رو انتخاب کن
+۶. روی **Save** کلیک کن
+```
+
 ## 🚀 مرحله ۵ — دیپلوی پروژه
 
 > ✅ مطمئن شو همه Secrets (به‌جز `WORKER_URL`) ست شدن و فایل `wrangler.toml` آپدیت شده.
