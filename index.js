@@ -8,8 +8,9 @@
 //  Constants
 // ──────────────────────────────────────────────────────────────
 const OWNER_ONLY_COMMANDS = new Set([
-    "/kv", "/admins", "/addadmin", "/rmadmin", "/wipe",
-    "/dump_memory", "/rmkey", "/stop",
+  "/kv", "/admins", "/addadmin", "/rmadmin", "/wipe",
+  "/dump_memory", "/rmkey", "/stop",
+  "/groups", "/addgroup", "/rmgroup",
 ]);
 
 // ──────────────────────────────────────────────────────────────
@@ -62,27 +63,34 @@ const EXT_PRIORITY = [
     ["💬", ["sub","srt","ass","ssa","vtt"]],
 ];
 
+// ──────────────────────────────────────────────────────────────
+//  File emoji
+// ──────────────────────────────────────────────────────────────
 function getFileEmoji(name) {
     if (!name) return "📄";
-    const lower = name.toLowerCase();
-    // check for .part/.001 etc suffix first
-    if (lower.endsWith(".part")) return "🔩";
-    const ext = (lower.split(".").pop() || "");
+    let lower = name.toLowerCase();
+    // حذف پسوند پارت عددی (.001.part .002.part ...)
+    lower = lower.replace(/\.\d{3}\.part$/, "");
+    // حذف .part ساده
+    if (lower.endsWith(".part")) lower = lower.replace(/\.part$/, "");
+    const ext = lower.split(".").pop() || "";
     return EXT_EMOJI_MAP[ext] || "📄";
 }
 
-/**
- * Determine emoji for a folder based on the extensions of its children.
- * Walks children recursively and picks the dominant media type.
- */
+// ──────────────────────────────────────────────────────────────
+//  Folder emoji — از روی فایل‌های داخل فولدر (recursive)
+// ──────────────────────────────────────────────────────────────
 function getFolderEmoji(children) {
     if (!Array.isArray(children) || children.length === 0) return "📁";
     const extSet = new Set();
     function walk(nodes) {
         for (const n of nodes) {
             if (n.type === "file") {
-                const ext = (n.name || "").toLowerCase().split(".").pop();
-                extSet.add(ext);
+                let lower = (n.name || "").toLowerCase();
+                lower = lower.replace(/\.\d{3}\.part$/, "");
+                if (lower.endsWith(".part")) lower = lower.replace(/\.part$/, "");
+                const ext = lower.split(".").pop();
+                if (ext) extSet.add(ext);
             } else if (n.type === "folder" && Array.isArray(n.children)) {
                 walk(n.children);
             }
@@ -100,35 +108,90 @@ function getFolderEmoji(children) {
 // ──────────────────────────────────────────────────────────────
 //  Helpers
 // ──────────────────────────────────────────────────────────────
-
-// Truncate filename: keep 10 chars before main ext + suffix
 function truncateFileName(name) {
-    const mainExts = [".mp4",".mkv",".avi",".mov",".wmv",".webm",".m4v",
-        ".mp3",".flac",".aac",".wav",".ogg",".m4a",
-        ".zip",".rar",".7z",".tar",".gz",".bz2",".xz",
-        ".pdf",".iso",".img",".apk",".exe",".msi",
-        ".doc",".docx",".xls",".xlsx",".ppt",".pptx"];
+    if (!name) return "";
+
+    const mainExts = [
+        // ترتیب مهمه — طولانی‌تر اول
+        ".tar.gz", ".tar.bz2", ".tar.xz",
+        // Video
+        ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".flv", ".ts", ".vob",
+        // Audio
+        ".mp3", ".flac", ".aac", ".wav", ".ogg", ".m4a", ".wma", ".opus", ".ape", ".alac",
+        // Archive
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".zst", ".lz4", ".cab",
+        // Mobile
+        ".apk", ".aab", ".ipa",
+        // Disk Image
+        ".iso", ".img", ".dmg", ".vhd", ".vmdk",
+        // Executable
+        ".appimage", ".exe", ".msi", ".deb", ".rpm", ".sh", ".bat", ".cmd",
+        // Document
+        ".pdf", ".docx", ".doc", ".odt", ".rtf",
+        ".xlsx", ".xls", ".ods", ".csv",
+        ".pptx", ".ppt", ".odp",
+        // Subtitle / Text
+        ".srt", ".ass", ".ssa", ".vtt", ".sub",
+        ".txt", ".md", ".nfo", ".log",
+        // Image
+        ".jpeg", ".jpg", ".png", ".gif", ".webp", ".bmp", ".svg", ".tiff", ".ico", ".raw",
+    ];
+
     const lower = name.toLowerCase();
-    let extIdx = -1, extFound = "";
+
+    // اگه پارت بود — پسوند اصلی قبلش رو در نظر بگیر
+    const partMatch = lower.match(/^(.+)(\.\d{3}\.part)$/);
+    const effectiveLower = partMatch ? partMatch[1] : lower;
+    // effectiveName: اسم اصلی با حروف بزرگ/کوچک اصلی، بدون پسوند پارت
+    const effectiveName  = partMatch ? name.slice(0, partMatch[1].length) : name;
+    const partSuffix     = partMatch ? name.slice(partMatch[1].length) : "";
+    // partSuffix مثلاً: ".001.part"
+
+    // پیدا کردن اولین mainExt توی effectiveLower
+    let extIdx = -1;
     for (const ext of mainExts) {
-        const idx = lower.indexOf(ext);
+        const idx = effectiveLower.indexOf(ext);
         if (idx !== -1 && (extIdx === -1 || idx < extIdx)) {
-            extIdx = idx; extFound = ext;
+            extIdx = idx;
         }
     }
+
     if (extIdx === -1) {
-        if (name.length <= 24) return name;
-        return name.slice(0, 10) + " … " + name.slice(-10);
+        // پسوند شناخته‌شده‌ای نبود — از lastIndexOf استفاده کن
+        const dotIdx = effectiveLower.lastIndexOf(".");
+        if (dotIdx > 0) {
+            const base    = effectiveName.slice(0, dotIdx);
+            const extPart = effectiveName.slice(dotIdx) + partSuffix;
+            if (base.length <= 10) return name;
+            return base.slice(0, 10) + "…" + extPart;
+        }
+        // اصلاً پسوند نداره
+        if (name.length <= 15) return name;
+        return name.slice(0, 10) + "…" + name.slice(-5);
     }
-    const suffix = name.slice(extIdx);
-    const prefix = name.slice(0, extIdx);
-    const pre10 = prefix.length > 10 ? prefix.slice(-10) : prefix;
-    return `${pre10} … ${suffix}`;
+
+    // ✅ از effectiveName بخون نه name — تا partSuffix دو بار اضافه نشه
+    const prefix = effectiveName.slice(0, extIdx);
+    const suffix = effectiveName.slice(extIdx) + partSuffix;
+
+    if (prefix.length <= 10) return name; // کوتاهه، دست نزن
+    return prefix.slice(0, 10) + "…" + suffix;
 }
 
 function truncateFolderName(name) {
-    if (name.length <= 23) return name;
-    return name.slice(0, 10) + " … " + name.slice(-10);
+    if (!name) return "";
+    if (name.length <= 20) return name;
+    return name.slice(0, 12) + "…" + name.slice(-7);
+}
+
+function truncateUrl(url) {
+    if (!url) return "";
+    if (url.length <= 31) return url;
+    return url.slice(0, 15) + "…" + url.slice(-15);
+}
+
+function formatMono(val) {
+    return `<code>${esc(String(val))}</code>`;
 }
 
 function formatDuration(ms) {
@@ -143,6 +206,18 @@ function esc(str) {
     if (typeof str !== "string") return String(str ?? "");
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+
+
+
+
+
+
+// ──────────────────────────────────────────────────────────────
+//  Helpers
+// ──────────────────────────────────────────────────────────────
+
+// Truncate filename: keep 10 chars before main ext + suffix
 
 // ──────────────────────────────────────────────────────────────
 //  KVManager
@@ -196,7 +271,7 @@ class KVManager {
     
         return { nextTask };
     }
-
+    
     async clearQueue() {
         await this.kv.put("queue_list", JSON.stringify([]));
     }
@@ -322,7 +397,7 @@ class KVManager {
         return usage.count;
     }
 
-    async dumpAll() {
+    async getKV() {
         const keys = ["admins_list", "queue_list", "current_task", "tree_cache", "allowed_groups", "daily_usage"];
         const result = {};
         for (const key of keys) {
@@ -358,153 +433,144 @@ class KVManager {
 class UIBuilder {
     // Progress bar for downloading only (not uploading — no real data)
     generateProgressBar(percent, speed = null, step = null, totalSteps = null) {
-        const pct = Math.min(100, Math.max(0, Number(percent) || 0));
-        const barWidth = 12;
-        const filled = Math.round((pct / 100) * barWidth);
-        const empty = barWidth - filled;
-
-        let bar;
-        if (filled === 0) {
-            bar = "•" + "━".repeat(barWidth - 1);
-        } else if (filled >= barWidth) {
-            bar = "━".repeat(barWidth);
-        } else {
-            bar = "━".repeat(filled - 1) + "•" + "━".repeat(empty);
-        }
-
-        const stepStr = (step !== null && totalSteps !== null) ? ` ${step}/${totalSteps}` : "";
-        const speedStr = speed ? `  ${speed}` : "";
-        return `▶ ${bar} ${pct}%${stepStr}${speedStr}`;
+      const pct = Math.min(100, Math.max(0, Number(percent) || 0));
+      const barWidth = 12;
+      const filled = Math.round((pct / 100) * barWidth);
+      const empty = barWidth - filled;
+      let bar;
+      if (filled === 0) bar = "•" + "━".repeat(barWidth - 1);
+      else if (filled >= barWidth) bar = "━".repeat(barWidth);
+      else bar = "━".repeat(filled - 1) + "•" + "━".repeat(empty);
+    
+      const stepStr = (step !== null && totalSteps !== null) ? ` ${step}/${totalSteps}` : "";
+      // سرعت قبل از بار، مونو
+      const speedStr = speed ? `${formatMono(speed)}  ` : "";
+      return `${speedStr}▶ ${formatMono(`${bar} ${pct}%${stepStr}`)}`;
     }
-
     // Tree display (for /folder detail view)
     buildTreeText(node, indent = "", isLast = true) {
-        if (Array.isArray(node)) {
-            if (node.length === 0) return "📂 <i>(empty)</i>\n";
-            return node.map((child, i) => this.buildTreeText(child, indent, i === node.length - 1)).join("");
-        }
-
-        const isFolder = node.type === "folder";
-        const connector = indent === "" ? "" : (isLast ? "└── " : "├── ");
-        const childIndent = indent === "" ? "" : (isLast ? "    " : "│   ");
-
-        let line;
-        if (isFolder) {
-            const emoji = node.folderEmoji || "📁";
-            const displayName = truncateFolderName(node.name);
-            const sizeStr = node.size ? ` <i>${esc(node.size)}</i>` : "";
-            if (node.url) {
-                line = `${indent}${connector}${emoji} <a href="${node.url}">${esc(displayName)}</a>${sizeStr}\n`;
-            } else {
-                line = `${indent}${connector}${emoji} <b>${esc(displayName)}</b>${sizeStr}\n`;
-            }
-            if (Array.isArray(node.children) && node.children.length > 0) {
-                node.children.forEach((child, i) => {
-                    const last = i === node.children.length - 1;
-                    line += this.buildTreeText(child, indent + childIndent, last);
-                });
-            }
+      if (Array.isArray(node)) {
+        if (node.length === 0) return "📂 <i>(empty)</i>\n";
+        return node.map((child, i) =>
+          this.buildTreeText(child, indent, i === node.length - 1)
+        ).join("");
+      }
+      const isFolder = node.type === "folder";
+      const connector = indent === "" ? "" : (isLast ? "└── " : "├── ");
+      const childIndent = indent === "" ? "" : (isLast ? "    " : "│   ");
+      let line;
+      if (isFolder) {
+        const emoji = node.folderEmoji || "📁";
+        const displayName = truncateFolderName(node.name);
+        const sizeStr = node.size ? ` ${formatMono(node.size)}` : "";
+        if (node.url) {
+          line = `${indent}${connector}${emoji} <a href="${node.url}">${esc(displayName)}</a>${sizeStr}\n`;
         } else {
-            const displayName = truncateFileName(node.name);
-            const emoji = getFileEmoji(node.name);
-            const sizeStr = node.size ? ` <i>${esc(node.size)}</i>` : "";
-            if (node.url) {
-                line = `${indent}${connector}${emoji} <a href="${esc(node.url)}">${esc(displayName)}</a>${sizeStr}\n`;
-            } else {
-                line = `${indent}${connector}${emoji} <code>${esc(displayName)}</code>${sizeStr}\n`;
-            }
+          line = `${indent}${connector}${emoji} <b>${esc(displayName)}</b>${sizeStr}\n`;
         }
-        return line;
-    }
-
-    // Status message
-    formatStatusMessage({ status, fileName, progress, size, step, totalSteps, speed, isUploading }) {
-        const emoji = fileName ? getFileEmoji(fileName) : "🎬";
-        const fileStr = fileName ? `${emoji} <b>File:</b> <code>${esc(fileName)}</code>\n` : "";
-        const sizeStr = size ? `💾 <b>Size:</b> <code>${esc(size)}</code>\n` : "";
-        const statusStr = `⏳ <b>Status:</b> ${esc(status)}\n`;
-
-        let barStr = "";
-        if (!isUploading && progress !== null && progress !== undefined) {
-            // Only show progress bar for download phase (not upload — no real data available)
-            barStr = `\n${this.generateProgressBar(progress, speed, step, totalSteps)}`;
+        if (Array.isArray(node.children) && node.children.length > 0) {
+          node.children.forEach((child, i) => {
+            line += this.buildTreeText(child, indent + childIndent, i === node.children.length - 1);
+          });
         }
-        return `${fileStr}${sizeStr}${statusStr}${barStr}`;
+      } else {
+        const displayName = truncateFileName(node.name);
+        const emoji = getFileEmoji(node.name);
+        const sizeStr = node.size ? ` ${formatMono(node.size)}` : "";
+        if (node.url) {
+          line = `${indent}${connector}${emoji} <a href="${esc(node.url)}">${esc(displayName)}</a>${sizeStr}\n`;
+        } else {
+          line = `${indent}${connector}${emoji} ${formatMono(displayName)}${sizeStr}\n`;
+        }
+      }
+      return line;
     }
-
-    // Queue display
+        // Status message
+    formatStatusMessage({ status, fileName, progress, size, step, totalSteps, speed, isUploading, isLargeFile }) {
+  // ایموجی استاتوس
+      let statusEmoji = "⏳";
+      if (status && status.includes("Setting up")) statusEmoji = "⚙️";
+      else if (status && status.includes("Download")) statusEmoji = "📥";
+      else if (status && status.includes("Upload")) statusEmoji = "📤";
+      else if (status && status.includes("Split")) statusEmoji = "✂️";
+    
+      // ایموجی فایل
+      const fileEmoji = fileName ? getFileEmoji(fileName) : "🎬";
+      const fileStr = fileName
+        ? `${fileEmoji} <b>File:</b> ${formatMono(truncateFileName(fileName))}\n`
+        : "";
+      const sizeStr = size ? `💾 <b>Size:</b> ${formatMono(size)}\n` : "";
+    
+      // پاک کردن ایموجی تکراری از status
+      const cleanStatus = String(status || "Processing").replace(/^[⚙️📥📤✂️⏳]\s*/, "");
+      const statusStr = `${statusEmoji} <b>Status:</b> ${formatMono(cleanStatus)}\n`;
+    
+      let barStr = "";
+      if (!isUploading && isLargeFile && progress !== null && progress !== undefined) {
+        barStr = `\n${this.generateProgressBar(progress, speed, step, totalSteps)}`;
+      }
+      return `${fileStr}${sizeStr}${statusStr}${barStr}`;
+    }
+        // Queue display
     formatQueue(queueList, currentTask, userUrl = null) {
-        const positions = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
-
-        let text = "📋 <b>Download Queue</b>\n";
-        text += "━━━━━━━━━━━━━━━━━━━━\n\n";
-
-        if (currentTask) {
-            const emoji = getFileEmoji(currentTask.url);
-            const shortUrl = currentTask.url.length > 40
-                ? currentTask.url.slice(0, 37) + "…"
-                : currentTask.url;
-            text += `🔄 <b>Now Processing:</b>\n`;
-            text += `   ${emoji} <code>${esc(shortUrl)}</code>\n\n`;
-        } else {
-            text += `😴 <b>Idle</b> — No active download\n\n`;
-        }
-
-        if (queueList.length > 0) {
-            text += `⏳ <b>Waiting (${queueList.length}):</b>\n`;
-            queueList.slice(0, 10).forEach((item, i) => {
-                const emoji = getFileEmoji(item.url);
-                const shortUrl = item.url.length > 38 ? item.url.slice(0, 35) + "…" : item.url;
-                const pos = positions[i] || `${i + 1}.`;
-                text += `${pos} ${emoji} <code>${esc(shortUrl)}</code>\n`;
-            });
-            if (queueList.length > 10) {
-                text += `\n<i>… and ${queueList.length - 10} more</i>\n`;
-            }
-        } else {
-            text += `✅ <b>Queue is empty</b>\n`;
-        }
-
-        if (userUrl) {
-            const pos = queueList.findIndex(item => item.url === userUrl);
-            if (pos >= 0) {
-                text += `\n🎯 <b>Your position:</b> ${pos + 1} of ${queueList.length}`;
-            }
-        }
-
-        return text;
+      const positions = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
+      let text = "📋 <b>Download Queue</b>\n━━━━━━━━━━━━━━━━━━━━\n\n";
+      if (currentTask) {
+        const emoji = getFileEmoji(currentTask.url);
+        text += `🔄 <b>Now Processing:</b>\n   ${emoji} <code>${esc(truncateUrl(currentTask.url))}</code>\n\n`;
+      } else {
+        text += `😴 <b>Idle</b> — No active download\n\nSend a link or use /link URL\n`;
+      }
+      if (queueList.length > 0) {
+        text += `⏳ <b>Waiting (${queueList.length}):</b>\n`;
+        queueList.slice(0, 10).forEach((item, i) => {
+          const emoji = getFileEmoji(item.url);
+          const pos = positions[i] || `${i + 1}.`;
+          text += `${pos} ${emoji} <code>${esc(truncateUrl(item.url))}</code>\n`;
+        });
+        if (queueList.length > 10) text += `\n<i>… and ${queueList.length - 10} more</i>\n`;
+      } else {
+        text += `✅ <b>Queue is empty</b>\n`;
+      }
+      if (userUrl) {
+        const pos = queueList.findIndex(item => item.url === userUrl);
+        if (pos >= 0) text += `\n🎯 <b>Your position:</b> ${pos + 1} of ${queueList.length}`;
+      }
+      return text;
     }
-
-    // Finished message
-    formatFinishedMessage({ fileName, size, folderTree, duration }) {
-        const emoji = fileName ? getFileEmoji(fileName) : "🎬";
-        let text = `${emoji} <b>File:</b> <code>${esc(fileName || "")}</code>\n`;
-        if (size) text += `💾 <b>Size:</b> <code>${esc(size)}</code>\n`;
-        text += `✅ <b>Status:</b> <code>Finished!</code>\n`;
-        if (duration) text += `⏱ <b>Duration:</b> <code>${esc(duration)}</code>\n`;
-        if (folderTree) {
-            // Folder hyperlink
-            const folderEmoji = folderTree.folderEmoji || "📂";
-            const folderDisplay = truncateFolderName(folderTree.name);
-            const folderLink = folderTree.url
-                ? `<a href="${esc(folderTree.url)}">${esc(folderDisplay)}</a>`
-                : `<b>${esc(folderDisplay)}</b>`;
-            text += `\n${folderEmoji} ${folderLink}\n`;
-            // Files inside folder
-            if (Array.isArray(folderTree.children) && folderTree.children.length > 0) {
-                for (const child of folderTree.children) {
-                    const fileEmoji = getFileEmoji(child.name);
-                    const fileDisplay = truncateFileName(child.name);
-                    const fileLink = child.url
-                        ? `<a href="${esc(child.url)}">${esc(fileDisplay)}</a>`
-                        : `<code>${esc(fileDisplay)}</code>`;
-                    text += `  ${fileEmoji} ${fileLink}\n`;
-                }
-            }
+        // Finished message
+    formatFinishedMessage({ fileName, size, folderTree, duration, fileEmoji }) {
+      const emoji = fileEmoji
+        || (folderTree ? getFolderEmoji(folderTree.children || []) : null)
+        || (fileName ? getFileEmoji(fileName) : "📄");
+    
+      let text = `${emoji} <b>File:</b> ${formatMono(truncateFileName(fileName || folderTree?.name || ""))}\n`;
+      if (size) text += `💾 <b>Size:</b> ${formatMono(size)}\n`;
+      text += `✅ <b>Status:</b> ${formatMono("Finished!")}\n`;
+      if (duration) text += `⏱ <b>Duration:</b> ${formatMono(duration)}\n`;
+      if (folderTree) {
+        const folderEmoji = folderTree.folderEmoji || "📂";
+        const folderDisplay = truncateFolderName(folderTree.name);
+        const folderLink = folderTree.url
+          ? `<a href="${esc(folderTree.url)}">${esc(folderDisplay)}</a>`
+          : `<b>${esc(folderDisplay)}</b>`;
+        const folderSize = folderTree.size ? ` ${formatMono(folderTree.size)}` : "";
+        text += `\n${folderEmoji} ${folderLink}${folderSize}\n`;
+        if (Array.isArray(folderTree.children) && folderTree.children.length > 0) {
+          for (const child of folderTree.children) {
+            const fe = getFileEmoji(child.name);
+            const fd = truncateFileName(child.name);
+            const fl = child.url
+              ? `<a href="${esc(child.url)}">${esc(fd)}</a>`
+              : formatMono(fd);
+            const fs = child.size ? ` ${formatMono(child.size)}` : "";
+            text += `  ${fe} ${fl}${fs}\n`;
+          }
         }
-        return text;
+      }
+      return text;
     }
-
+    
     buildKeyboard(type, data = {}) {
         const kb = { inline_keyboard: [] };
         switch (type) {
@@ -777,55 +843,48 @@ function validateUrl(raw) {
 const FOLDERS_PAGE_SIZE = 10;
 
 function buildFoldersPage(tree, page = 0) {
-    // Total size
-    let totalRaw = 0;
-    for (const node of tree) totalRaw += (node.rawSize || 0);
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB", "TB"];
-    const i = totalRaw > 0 ? Math.floor(Math.log(totalRaw) / Math.log(k)) : 0;
-    const totalSize = totalRaw > 0
-        ? parseFloat((totalRaw / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
-        : "0 B";
+  let totalRaw = 0;
+  for (const node of tree) totalRaw += (node.rawSize || 0);
+  const k = 1024;
+  const szNames = ["B","KB","MB","GB","TB"];
+  const si = totalRaw > 0 ? Math.floor(Math.log(totalRaw) / Math.log(k)) : 0;
+  const totalSize = totalRaw > 0
+    ? parseFloat((totalRaw / Math.pow(k, si)).toFixed(2)) + " " + szNames[si]
+    : "0 B";
 
-    const start = page * FOLDERS_PAGE_SIZE;
-    const slice = tree.slice(start, start + FOLDERS_PAGE_SIZE);
-    const hasNext = tree.length > start + FOLDERS_PAGE_SIZE;
-    const totalPages = Math.ceil(tree.length / FOLDERS_PAGE_SIZE) || 1;
+  const start = page * FOLDERS_PAGE_SIZE;
+  const slice = tree.slice(start, start + FOLDERS_PAGE_SIZE);
+  const hasNext = tree.length > start + FOLDERS_PAGE_SIZE;
+  const totalPages = Math.ceil(tree.length / FOLDERS_PAGE_SIZE) || 1;
 
-    let text = `📂 <b>Downloads</b>  <i>${esc(totalSize)}</i>\n`;
-    text += `━━━━━━━━━━━━━━━━━━━━\n`;
+  let text = `📂 <b>Downloads</b>  ${formatMono(totalSize)}\n`;
+  text += `━━━━━━━━━━━━━━━━━━━━\n`;
 
-    if (tree.length === 0) {
-        text += "\n<i>No files found. Run /sync to refresh.</i>";
-    } else {
-        text += "\n";
-        for (const node of slice) {
-            const sizeStr = node.size ? `  <i>${esc(node.size)}</i>` : "";
-
-            if (node.type === "folder") {
-                const emoji = node.folderEmoji || "📁";
-                const displayName = truncateFolderName(node.name);
-                const link = node.url
-                    ? `<a href="${esc(node.url)}">${esc(displayName)}</a>`
-                    : `<b>${esc(displayName)}</b>`;
-                text += `${emoji} ${link}${sizeStr}\n`;
-            } else {
-                // Direct file under downloads
-                const emoji = getFileEmoji(node.name);
-                const displayName = truncateFileName(node.name);
-                const link = node.url
-                    ? `<a href="${esc(node.url)}">${esc(displayName)}</a>`
-                    : `<code>${esc(displayName)}</code>`;
-                text += `${emoji} ${link}${sizeStr}\n`;
-            }
-        }
+  if (tree.length === 0) {
+    text += "\n<i>No files found. Run /sync to refresh.</i>";
+  } else {
+    text += "\n";
+    for (const node of slice) {
+      const sizeStr = node.size ? `  ${formatMono(node.size)}` : "";
+      if (node.type === "folder") {
+        const emoji = node.folderEmoji || "📁";
+        const displayName = truncateFolderName(node.name);
+        const link = node.url
+          ? `<a href="${esc(node.url)}">${esc(displayName)}</a>`
+          : `<b>${esc(displayName)}</b>`;
+        text += `${emoji} ${link}${sizeStr}\n`;
+      } else {
+        const emoji = getFileEmoji(node.name);
+        const displayName = truncateFileName(node.name);
+        const link = node.url
+          ? `<a href="${esc(node.url)}">${esc(displayName)}</a>`
+          : `<code>${esc(displayName)}</code>`;
+        text += `${emoji} ${link}${sizeStr}\n`;
+      }
     }
-
-    if (totalPages > 1) {
-        text += `\n<i>Page ${page + 1} of ${totalPages}</i>`;
-    }
-
-    return { text, hasNext, page };
+  }
+  if (totalPages > 1) text += `\n<i>Page ${page + 1} of ${totalPages}</i>`;
+  return { text, hasNext, page };
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -854,26 +913,44 @@ class CommandHandler {
     }
 
     async registerBotCommands() {
-        await this.telegram.setMyCommands([
-            { command: "start",       description: "Start the bot / show status" },
-            { command: "link",        description: "Queue a download link" },
-            { command: "queue",       description: "View download queue" },
-            { command: "folders",     description: "Browse downloaded files" },
-            { command: "folder",      description: "Show a specific folder" },
-            { command: "sync",        description: "Sync file list from GitHub" },
-            { command: "help",        description: "Show available commands" },
-            { command: "admins",      description: "List admins (Owner only)" },
-            { command: "addadmin",    description: "Add admin (Owner only)" },
-            { command: "rmadmin",     description: "Remove admin (Owner only)" },
-            { command: "wipe",        description: "Delete files by number (Owner only)" },
-            { command: "kv",          description: "View KV store (Owner only)" },
-            { command: "rmkey",       description: "Clear a KV key (Owner only)" },
-            { command: "dump_memory", description: "Reset queue/state (Owner only)" },
-            { command: "stop",        description: "Stop all GitHub Actions (Owner only)" },
-        ]);
-        await this.telegram.setMenuButton(); 
+      // دستورات عمومی (برای همه)
+      const publicCommands = [
+        { command: "start",   description: "Bot status" },
+        { command: "link",    description: "Queue a download link" },
+        { command: "queue",   description: "View download queue" },
+        { command: "folders", description: "Browse downloaded files" },
+        { command: "folder",  description: "Show a specific folder" },
+        { command: "sync",    description: "Sync file list from GitHub" },
+        { command: "help",    description: "Show available commands" },
+      ];
+      // دستورات اونر (فقط در چت خصوصی اونر نمایش داده میشه)
+      const ownerCommands = [
+        ...publicCommands,
+        { command: "admins",      description: "List admins" },
+        { command: "addadmin",    description: "Add admin" },
+        { command: "rmadmin",     description: "Remove admin" },
+        { command: "wipe",        description: "Delete files" },
+        { command: "kv",          description: "View KV store" },
+        { command: "rmkey",       description: "Clear a KV key" },
+        { command: "dump_memory", description: "Reset queue/state" },
+        { command: "stop",        description: "Stop GitHub Actions" },
+        { command: "groups",      description: "List authorized groups" },
+        { command: "addgroup",    description: "Add group" },
+        { command: "rmgroup",     description: "Remove group" },
+      ];
+      // ست کردن برای اونر (private chat scope)
+      await this.telegram.callApi("setMyCommands", {
+        commands: ownerCommands,
+        scope: { type: "chat", chat_id: Number(this.ownerId) },
+      });
+      // ست کردن برای بقیه (default scope)
+      await this.telegram.callApi("setMyCommands", {
+        commands: publicCommands,
+        scope: { type: "default" },
+      });
+      await this.telegram.setMenuButton();
     }
-    
+        
     async handleWipeCommand(message, args) {
         const chatId = message.chat.id;
         const msgId = message.message_id;
@@ -1116,48 +1193,59 @@ class CommandHandler {
     async processCommand(command, text, chatId, messageId, userId, isOwner, isAdmin) {
         switch (command) {
             case "/start": {
-                const usage = await this.kv.getDailyUsage();
-                const FREE_DAILY = 100000;
-                const usageBar = `📊 Daily CF Requests: <code>${usage.count}/${FREE_DAILY}</code>`;
-                const currentTask = await this.kv.getCurrentTask();
-                const queue = await this.kv.getQueue();
-                let statusLine = "😴 Idle — ready for links!";
-                if (currentTask) statusLine = `⚡ Processing 1 download + ${queue.length} in queue`;
-                return this.telegram.sendMessage(
-                    chatId,
-                    `🤖 <b>Download Bot Ready!</b>\n\n${statusLine}\n${usageBar}\n\nSend a link or use <code>/link URL</code>`
-                );
+              const usage = await this.kv.getDailyUsage();
+              const FREE_DAILY = 100000;
+              const usageBar = `📊 Daily CF Requests: ${formatMono(`${usage.count}/${FREE_DAILY}`)}`;
+              const currentTask = await this.kv.getCurrentTask();
+              const queue = await this.kv.getQueue();
+              let statusLine = "😴 Idle — ready for links!";
+              if (currentTask) statusLine = `⚡ Processing 1 download + ${queue.length} in queue`;
+              return this.telegram.sendMessage(
+                chatId,
+                `🤖 <b>Download Bot Ready!</b>\n\n${statusLine}\n${usageBar}\n\nSend a link or use /link URL`,
+                null, messageId
+              );
             }
-
+            
             case "/folders": {
                 const tree = await this.kv.getTreeCache();
                 const { text: pageText, hasNext, page } = buildFoldersPage(tree, 0);
                 const kb = this.ui.buildKeyboard("folders_page", { page: 0, hasNext });
-                return this.telegram.sendMessage(chatId, pageText, kb.inline_keyboard.length > 0 ? kb : null);
+                return this.telegram.sendMessage(chatId, pageText, kb.inline_keyboard.length > 0 ? kb : null, null, messageId);
             }
 
             case "/folder": {
-                const folderName = text.split(" ").slice(1).join(" ").trim();
-                if (!folderName) return this.telegram.sendMessage(chatId, "⚠️ Usage: <code>/folder folder_name</code>");
-                const tree = await this.kv.getTreeCache();
-                const found = tree.find(n => n.type === "folder" && n.name === folderName);
-                if (!found) return this.telegram.sendMessage(chatId, `❌ Folder <b>${esc(folderName)}</b> not found. Try /sync first.`);
-                const folderText = this.ui.buildTreeText(found);
-                const emoji = found.folderEmoji || "📁";
-                return this.telegram.sendMessage(
-                    chatId,
-                    `${emoji} <b>${esc(found.name)}</b>  <i>${esc(found.size || "")}</i>\n\n${folderText}`
-                );
+              const folderName = text.split(" ").slice(1).join(" ").trim();
+              if (!folderName) return this.telegram.sendMessage(chatId, "⚠️ Usage: <code>/folder folder_name</code>", null, messageId);
+              const tree = await this.kv.getTreeCache();
+              const found = tree.find(n => n.type === "folder" && n.name === folderName);
+              if (!found) return this.telegram.sendMessage(chatId, `❌ Folder <b>${esc(folderName)}</b> not found.`, null, messageId);
+              const folderEmoji = found.folderEmoji || "📁";
+              const folderDisplay = truncateFolderName(found.name);
+              const folderSize = found.size ? ` ${formatMono(found.size)}` : "";
+              let txt = `${folderEmoji} <b>${esc(folderDisplay)}</b>${folderSize}\n`;
+              if (Array.isArray(found.children)) {
+                for (const child of found.children) {
+                  const fe = getFileEmoji(child.name);
+                  const fd = truncateFileName(child.name);
+                  const fl = child.url
+                    ? `<a href="${esc(child.url)}">${esc(fd)}</a>`
+                    : formatMono(fd);
+                  const fs = child.size ? ` ${formatMono(child.size)}` : "";
+                  txt += `  ${fe} ${fl}${fs}\n`;
+                }
+              }
+              return this.telegram.sendMessage(chatId, txt, null, messageId);
             }
-
+            
             case "/queue": {
                 const queue = await this.kv.getQueue();
                 const current = await this.kv.getCurrentTask();
-                return this.telegram.sendMessage(chatId, this.ui.formatQueue(queue, current));
+                return this.telegram.sendMessage(chatId, this.ui.formatQueue(queue, current, null, messageId));
             }
 
             case "/sync": {
-                const msg = await this.telegram.sendMessage(chatId, "🔄 Syncing with GitHub…");
+                const msg = await this.telegram.sendMessage(chatId, "🔄 Syncing with GitHub…", null, messageId);
                 try {
                     const rawTree = await this.github.buildDownloadsTree();
                     // updateTreeCache assigns ids and folderEmoji
@@ -1184,6 +1272,8 @@ class CommandHandler {
             case "/rmkey":
             case "/stop":
             case "/groups":
+            case "/addgroup":
+            case "/rmgroup":
                 return this.processOwnerCommand(command, text, chatId, messageId, isOwner);
 
             default:
@@ -1192,43 +1282,25 @@ class CommandHandler {
     }
 
     // ── handleHelp ────────────────────────────────────────────
-    async handleHelp(chatId, isOwner) {
-        if (isOwner) {
-            let text = `🛠 <b>Owner Commands</b>\n`;
-            text += `━━━━━━━━━━━━━━━━━━━━\n`;
-            text += `/admins — List all admins\n`;
-            text += `/addadmin &lt;ID&gt; — Add an admin\n`;
-            text += `/rmadmin &lt;ID&gt; — Remove an admin\n`;
-            text += `/wipe &lt;number&gt; — Delete item by number from /folders\n`;
-            text += `/kv — View KV store contents\n`;
-            text += `/rmkey &lt;key&gt; — Clear a KV key value\n`;
-            text += `/dump_memory — Reset queue & state\n`;
-            text += `/stop — Stop all GitHub Actions\n`;
-            text += `\n👥 <b>General Commands</b>\n`;
-            text += `━━━━━━━━━━━━━━━━━━━━\n`;
-            text += `/start — Bot status & daily usage\n`;
-            text += `/link &lt;URL&gt; — Queue a download\n`;
-            text += `/queue — View download queue\n`;
-            text += `/folders — Browse all downloaded files\n`;
-            text += `/folder &lt;name&gt; — View specific folder contents\n`;
-            text += `/sync — Refresh file list from GitHub\n`;
-            text += `/help — Show this help\n`;
-            return this.telegram.sendMessage(chatId, text);
-        } else {
-            let text = `📖 <b>Available Commands</b>\n`;
-            text += `━━━━━━━━━━━━━━━━━━━━\n`;
-            text += `/start — Bot status\n`;
-            text += `/link &lt;URL&gt; — Queue a download\n`;
-            text += `/queue — View download queue\n`;
-            text += `/folders — Browse downloaded files\n`;
-            text += `/folder &lt;name&gt; — View specific folder contents\n`;
-            text += `/sync — Refresh file list\n`;
-            text += `/help — Show this help\n`;
-            return this.telegram.sendMessage(chatId, text);
-        }
+    async handleHelp(chatId, isOwner, replyToMsgId = null) {
+      let text;
+      if (isOwner) {
+        text = `🛠 <b>Owner Commands</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
+        text += `/admins — List all admins\n/addadmin &lt;ID&gt; — Add admin\n/rmadmin &lt;ID&gt; — Remove admin\n`;
+        text += `/wipe &lt;num&gt; — Delete item(s) by number\n/wipe . — Wipe entire downloads\n`;
+        text += `/kv — View KV store\n/rmkey &lt;key&gt; — Clear a KV key\n`;
+        text += `/dump_memory — Reset queue & state\n/stop — Stop all GitHub Actions\n`;
+        text += `/groups — List authorized groups\n/addgroup &lt;ID&gt; — Add group\n/rmgroup &lt;ID&gt; — Remove group\n`;
+        text += `\n👥 <b>General Commands</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
+      } else {
+        text = `📖 <b>Available Commands</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
+      }
+      text += `/start — Bot status\n/link &lt;URL&gt; — Queue a download\n`;
+      text += `/queue — View download queue\n/folders — Browse downloaded files\n`;
+      text += `/folder &lt;name&gt; — View folder contents\n/sync — Refresh file list\n/help — This help\n`;
+      return this.telegram.sendMessage(chatId, text, null, replyToMsgId);
     }
-
-    // ── processOwnerCommand ───────────────────────────────────
+        // ── processOwnerCommand ───────────────────────────────────
     async processOwnerCommand(command, text, chatId, messageId, isOwner) {
         if (!isOwner) return;
 
@@ -1242,29 +1314,29 @@ class CommandHandler {
                 } else {
                     admins.forEach((id, i) => { msg += `${i + 1}. <code>${id}</code>\n`; });
                 }
-                return this.telegram.sendMessage(chatId, msg);
+                return this.telegram.sendMessage(chatId, msg, null, messageId);
             }
 
             case "/addadmin": {
                 const newId = text.split(" ")[1]?.trim();
-                if (!newId) return this.telegram.sendMessage(chatId, "⚠️ Usage: <code>/addAdmin &lt;numeric_ID&gt;</code>");
+                if (!newId) return this.telegram.sendMessage(chatId, "⚠️ Usage: <code>/addAdmin &lt;numeric_ID&gt;</code>", null, messageId);
                 if (!/^\d+$/.test(newId)) {
-                    return this.telegram.sendMessage(chatId, `❌ Invalid ID: <code>${esc(newId)}</code>\n<i>Only numeric Telegram user IDs are accepted.</i>`);
+                    return this.telegram.sendMessage(chatId, `❌ Invalid ID: <code>${esc(newId)}</code>\n<i>Only numeric Telegram user IDs are accepted.</i>`, null, messageId);
                 }
-                if (newId === this.ownerId) return this.telegram.sendMessage(chatId, "ℹ️ You (Owner) already have full access.");
+                if (newId === this.ownerId) return this.telegram.sendMessage(chatId, "ℹ️ You (Owner) already have full access.", null, messageId);
                 await this.kv.addAdmin(newId);
                 return this.telegram.sendMessage(chatId, `✅ Admin added: <code>${newId}</code>`);
             }
 
             case "/rmadmin": {
                 const rmId = text.split(" ")[1]?.trim();
-                if (!rmId) return this.telegram.sendMessage(chatId, "⚠️ Usage: <code>/rmAdmin &lt;numeric_ID&gt;</code>");
+                if (!rmId) return this.telegram.sendMessage(chatId, "⚠️ Usage: <code>/rmAdmin &lt;numeric_ID&gt;</code>", null, messageId);
                 if (!/^\d+$/.test(rmId)) {
-                    return this.telegram.sendMessage(chatId, `❌ Invalid ID: <code>${esc(rmId)}</code>\n<i>Only numeric Telegram user IDs are accepted.</i>`);
+                    return this.telegram.sendMessage(chatId, `❌ Invalid ID: <code>${esc(rmId)}</code>\n<i>Only numeric Telegram user IDs are accepted.</i>`, null, messageId);
                 }
                 const admins = await this.kv.getAdmins();
                 if (!admins.map(String).includes(rmId)) {
-                    return this.telegram.sendMessage(chatId, `⚠️ ID <code>${rmId}</code> is not in the admin list.`);
+                    return this.telegram.sendMessage(chatId, `⚠️ ID <code>${rmId}</code> is not in the admin list.`, null, messageId);
                 }
                 const kb = this.ui.buildKeyboard("confirm_rmAdmin", { userId: rmId });
                 return this.telegram.sendMessage(chatId, `❓ Remove admin <code>${rmId}</code>?`, kb);
@@ -1288,18 +1360,23 @@ class CommandHandler {
                     // No argument → show numbered list for reference
                     const tree = await this.kv.getTreeCache();
                     if (tree.length === 0) {
-                        return this.telegram.sendMessage(chatId, "📂 Downloads folder is empty. Run /sync first.");
+                        return this.telegram.sendMessage(chatId, "📂 Downloads folder is empty. Run /sync first.", null, messageId);
                     }
                     let msg = `🗑 <b>Wipe — Select item(s) to delete</b>\n`;
-                    msg += `━━━━━━━━━━━━━━━━━━━━\n\n`;
-                    msg += `Usage: <code>/wipe &lt;number&gt; [number2] [number3] …</code>\n\n`;
+                    msg += `━━━━━━━━━━━━━━━━━━━━\n\n`;                   
+                    // جدید:
+                    msg += `Usage:\n`;
+                    msg += `  ${formatMono("/wipe 1")} — delete item #01\n`;
+                    msg += `  ${formatMono("/wipe 1 3 5")} — delete multiple items\n`;
+                    msg += `  ${formatMono("/wipe .")} — wipe <b>entire</b> downloads folder\n\n`;
                     for (const node of tree) {
                         const emoji = node.folderEmoji || (node.type === "folder" ? "📁" : getFileEmoji(node.name));
                         const name = node.type === "folder" ? truncateFolderName(node.name) : truncateFileName(node.name);
                         const sizeStr = node.size ? `  <i>${esc(node.size)}</i>` : "";
-                        msg += `<code>#${node.id}</code> ${emoji} ${esc(name)}${sizeStr}\n`;
+                        const numStr = String(node.id).padStart(2, "0");
+                        msg += `<code>#${numStr}</code> ${emoji} ${esc(name)}${sizeStr}\n`;
                     }
-                    return this.telegram.sendMessage(chatId, msg);
+                    return this.telegram.sendMessage(chatId, msg, null, messageId);
                 }
 
                 // Parse all numeric args, dedup
@@ -1309,7 +1386,7 @@ class CommandHandler {
                 if (uniqueIds.length === 0) {
                     return this.telegram.sendMessage(
                         chatId,
-                        `❌ Invalid argument(s). Usage: <code>/wipe &lt;number&gt; [number2] …</code>\nSend /wipe alone to see the list.`
+                        `❌ Invalid argument(s). Usage: <code>/wipe &lt;number&gt; [number2] …</code>\nSend /wipe alone to see the list.`, null, messageId
                     );
                 }
 
@@ -1320,7 +1397,7 @@ class CommandHandler {
                 if (targets.length === 0) {
                     return this.telegram.sendMessage(
                         chatId,
-                        `❌ None of the given number(s) were found.\nRun /wipe to see current items.`
+                        `❌ None of the given number(s) were found.\nRun /wipe to see current items.`, null, messageId
                     );
                 }
 
@@ -1357,38 +1434,69 @@ class CommandHandler {
             }
 
             case "/kv": {
-                const allData = await this.kv.dumpAll();
-                const json = JSON.stringify(allData, null, 2);
-                const MAX = 3800;
-                const chunks = [];
-                for (let i = 0; i < json.length; i += MAX) chunks.push(json.slice(i, i + MAX));
-                for (let i = 0; i < chunks.length; i++) {
-                    await this.telegram.sendMessage(
-                        chatId,
-                        `🗄 <b>KV Store (${i + 1}/${chunks.length})</b>\n<pre>${esc(chunks[i])}</pre>`
-                    );
+              const allData = await this.kv.getKV();
+              // ترتیب دلخواه
+              const ordered = {
+                admins_list: allData.admins_list,
+                allowed_groups: allData.allowed_groups,
+                daily_usage: allData.daily_usage,
+                queue_list: allData.queue_list,
+                current_task: allData.current_task,
+                tree_cache: (allData.tree_cache || []).map(n => ({
+                  id: n.id, type: n.type, name: n.name,
+                  size: n.size, rawSize: n.rawSize,
+                  url: n.url, folderEmoji: n.folderEmoji,
+                  children: (n.children || []).map(c => ({
+                    type: c.type, name: c.name,
+                    size: c.size, rawSize: c.rawSize, url: c.url,
+                  })),
+                })),
+              };
+              const json = JSON.stringify(ordered, null, 2);
+              const PAGE_SIZE = 1500;
+              const lines = json.split("\n");
+              // تقسیم بر اساس خط (max 50 خط یا 1500 کاراکتر)
+              const pages = [];
+              let cur = [];
+              let curLen = 0;
+              for (const line of lines) {
+                if (cur.length >= 50 || curLen + line.length > PAGE_SIZE) {
+                  pages.push(cur.join("\n"));
+                  cur = []; curLen = 0;
                 }
-                return;
+                cur.push(line);
+                curLen += line.length + 1;
+              }
+              if (cur.length) pages.push(cur.join("\n"));
+              // ذخیره صفحات در KV موقت
+              await this.kv.kv.put("kv_pages_cache", JSON.stringify(pages), { expirationTtl: 300 });
+              const kb = pages.length > 1 ? {
+                inline_keyboard: [[{ text: "Next ➡️", callback_data: "kv_page:1" }]]
+              } : null;
+              return this.telegram.sendMessage(
+                chatId,
+                `🗄 <b>KV Store (1/${pages.length})</b>\n<pre>${esc(pages[0])}</pre>`,
+                kb, messageId
+              );
             }
-
+            
             case "/rmkey": {
                 const keyArg = text.split(" ")[1]?.trim();
                 if (!keyArg) {
                     return this.telegram.sendMessage(chatId,
                         `⚠️ Usage: <code>/rmKey &lt;key_name&gt;</code>\n\nValid keys:\n` +
-                        `<code>admins_list</code>  <code>queue_list</code>  <code>current_task</code>\n` +
-                        `<code>tree_cache</code>  <code>allowed_groups</code>  <code>daily_usage</code>`
+                        `<code>admins_list</code>\n<code>queue_list</code>\n<code>current_task</code>\n<code>tree_cache</code>\n<code>allowed_groups</code>\n<code>daily_usage</code>`, null, messageId
                     );
                 }
                 const ok = await this.kv.clearKeyValue(keyArg);
                 if (!ok) {
-                    return this.telegram.sendMessage(chatId, `❌ Unknown key: <code>${esc(keyArg)}</code>`);
+                    return this.telegram.sendMessage(chatId, `❌ Unknown key: <code>${esc(keyArg)}</code>`, null, messageId);
                 }
-                return this.telegram.sendMessage(chatId, `✅ Key <code>${esc(keyArg)}</code> value has been cleared (key preserved).`);
+                return this.telegram.sendMessage(chatId, `✅ Key <code>${esc(keyArg)}</code> value has been cleared (key preserved).`, null, messageId);
             }
 
             case "/stop": {
-                const msg = await this.telegram.sendMessage(chatId, "⏹ <b>Stopping all GitHub Actions…</b>");
+                const msg = await this.telegram.sendMessage(chatId, "⏹ <b>Stopping all GitHub Actions…</b>", null, messageId);
                 try {
                     const result = await this.github.stopAllRuns();
                     let report = `⏹ <b>GitHub Actions — Stop Report</b>\n━━━━━━━━━━━━━━━━━━━━\n\n`;
@@ -1411,7 +1519,38 @@ class CommandHandler {
                 let msg = `🏢 <b>Authorized Groups</b>\n━━━━━━━━━━━━━━━━━━━━\n\n`;
                 if (groups.length === 0) msg += "<i>No groups authorized.</i>";
                 else groups.forEach((id, i) => { msg += `${i + 1}. <code>${id}</code>\n`; });
-                return this.telegram.sendMessage(chatId, msg);
+                return this.telegram.sendMessage(chatId, msg, null, messageId);
+            }
+
+            case "/addgroup": {
+                const newGroupId = text.split(" ")[1]?.trim();
+                if (!newGroupId) {
+                    return this.telegram.sendMessage(chatId, "⚠️ Usage: <code>/addGroup &lt;group_id&gt;</code>\n<i>Group IDs start with <code>-100</code></i>", null, messageId);
+                }
+                if (!/^-100\d+$/.test(newGroupId)) {
+                    return this.telegram.sendMessage(chatId, `❌ Invalid group ID: <code>${esc(newGroupId)}</code>\n<i>Telegram group IDs must start with <code>-100</code> followed by digits.</i>`, null, messageId);
+                }
+                const groups = await this.kv.getAllowedGroups();
+                if (groups.includes(newGroupId)) {
+                    return this.telegram.sendMessage(chatId, `ℹ️ Group <code>${newGroupId}</code> is already authorized.`, null, messageId);
+                }
+                groups.push(newGroupId);
+                await this.kv.setAllowedGroups(groups);
+                return this.telegram.sendMessage(chatId, `✅ Group <code>${newGroupId}</code> added to authorized list.`, null, messageId);
+            }
+
+            case "/rmgroup": {
+                const rmGroupId = text.split(" ")[1]?.trim();
+                if (!rmGroupId) {
+                    return this.telegram.sendMessage(chatId, "⚠️ Usage: <code>/rmGroup &lt;group_id&gt;</code>", null, messageId);
+                }
+                const groups = await this.kv.getAllowedGroups();
+                if (!groups.includes(rmGroupId)) {
+                    return this.telegram.sendMessage(chatId, `⚠️ Group <code>${esc(rmGroupId)}</code> is not in the authorized list.`, null, messageId);
+                }
+                const updated = groups.filter(id => id !== rmGroupId);
+                await this.kv.setAllowedGroups(updated);
+                return this.telegram.sendMessage(chatId, `✅ Group <code>${esc(rmGroupId)}</code> removed from authorized list.`, null, messageId);
             }
         }
     }
@@ -1429,6 +1568,24 @@ class CommandHandler {
         const colonIdx = data.indexOf(":");
         const action = colonIdx >= 0 ? data.slice(0, colonIdx) : data;
         const targetData = colonIdx >= 0 ? data.slice(colonIdx + 1) : "";
+        
+        if (action === "kv_page") {
+          const page = parseInt(targetData) || 0;
+          const pages = (await this.kv.kv.get("kv_pages_cache", "json")) || [];
+          if (!pages[page]) return;
+          const hasPrev = page > 0;
+          const hasNext = page < pages.length - 1;
+          const row = [];
+          if (hasPrev) row.push({ text: "⬅️ Prev", callback_data: `kv_page:${page - 1}` });
+          if (hasNext) row.push({ text: "Next ➡️", callback_data: `kv_page:${page + 1}` });
+          const kb = row.length > 0 ? { inline_keyboard: [row] } : null;
+          await this.telegram.editMessageText(
+            chatId, messageId,
+            `🗄 <b>KV Store (${page + 1}/${pages.length})</b>\n<pre>${esc(pages[page])}</pre>`,
+            kb
+          );
+          return;
+        }     
 
         // Folders pagination — anyone allowed can page
         if (action === "folders_page") {
@@ -1561,41 +1718,24 @@ class CommandHandler {
         switch (event) {
             // ── Progress update ────────────────────────────────
             case "progress_update": {
-                const { progress, status, fileName, size, step, totalSteps, speed } = data;
-
-                // Detect if this is an upload notification (no real progress data)
-                const isUploading = typeof status === "string" && status.toLowerCase().includes("upload");
-
-                const text = this.ui.formatStatusMessage({
-                    status: status || "Processing",
-                    fileName: fileName || null,
-                    progress: isUploading ? null : (progress !== null && progress !== undefined ? progress : null),
-                    size: size || null,
-                    step: step || null,
-                    totalSteps: totalSteps || null,
-                    speed: speed || null,
-                    isUploading,
-                });
-                await this.telegram.editMessageText(chatId, statusMessageId, text);
-                return new Response("OK", { status: 200 });
-            }
-
-            // ── Status update (no progress bar) ───────────────
-            case "status_update": {
-                const { status, fileName, size, step, totalSteps } = data;
-                const text = this.ui.formatStatusMessage({
-                    status: status || "Processing",
-                    fileName: fileName || null,
-                    progress: null,
-                    size: size || null,
-                    step: step || null,
-                    totalSteps: totalSteps || null,
-                    isUploading: false,
-                });
-                await this.telegram.editMessageText(chatId, statusMessageId, text);
-                return new Response("OK", { status: 200 });
-            }
-        
+              const { progress, status, fileName, size, step, totalSteps, speed, remoteSize } = data;
+              const isUploading = typeof status === "string" && status.toLowerCase().includes("upload");
+              const fileSizeBytes = Number(remoteSize || 0);
+              const isLargeFile = fileSizeBytes >= 100 * 1024 * 1024;
+              const text = this.ui.formatStatusMessage({
+                status: status || "Processing",
+                fileName: fileName || null,
+                progress: progress !== undefined ? progress : null,
+                size: size || null,
+                step: step || null,
+                totalSteps: totalSteps || null,
+                speed: speed || null,
+                isUploading,
+                isLargeFile,
+              });
+              await this.telegram.editMessageText(chatId, statusMessageId, text);
+              return new Response("OK", { status: 200 });
+            }        
             case "task_completed": {
                 const { folderTree, fileName, size, startedAt } = data;
                 let duration = null;
@@ -1636,28 +1776,30 @@ class CommandHandler {
             
                         // ── Wipe completed ────────────────────────────────
             case "wipe_completed": {
-                const { tree: wipedTree } = data;
-                const tg_chat_id = data.tg_chat_id || data.chatId || "";
-                const tg_message_id = data.tg_message_id || data.messageId || "";
-                const freed_size = data.freed_size || data.sizeFreed || "0 B";
-                const folders_deleted = data.folders_deleted ?? data.foldersDeleted ?? 0;
+              const { tree: wipedTree, foldersDeleted, filesDeleted, sizeFreed, targetPath } = data;
+              const tg_chat_id = data.chatId || data.tg_chat_id || chatId;
+              const tg_msg_id = data.messageId || data.tg_message_id || statusMessageId;
             
-                // آپدیت دیتابیس با لیست جدیدی که گیت‌هاب فرستاده
-                if (Array.isArray(wipedTree)) {
-                    await this.kv.updateTreeCache(wipedTree);
-                }
+              if (Array.isArray(wipedTree)) {
+                await this.kv.updateTreeCache(wipedTree);
+              }
             
-                // اطلاع‌رسانی به کاربر
-                
-                let msg = `🗑 <b>Wipe Complete!</b>\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-                msg += `📂 Folders removed: <b>${folders_deleted || 0}</b>\n`;
-                msg += `💾 Space freed: <b>${freed_size || "0 KB"}</b>\n\n`;
-                msg += `✅ <i>Database synchronized with GitHub.</i>`;
+              let msg = `🗑 <b>Wipe Complete!</b>\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+              if (targetPath) msg += `📁 Path: ${formatMono(targetPath)}\n`;
+              msg += `📂 Folders removed: ${formatMono(foldersDeleted ?? 0)}\n`;
+              msg += `📄 Files removed: ${formatMono(filesDeleted ?? 0)}\n`;
+              msg += `💾 Space freed: ${formatMono(sizeFreed || "0 B")}\n\n`;
+              msg += `✅ <i>Cache synchronized.</i>`;
             
+              // ادیت پیام اصلی
+              try {
+                await this.telegram.editMessageText(tg_chat_id, tg_msg_id, msg);
+              } catch {
                 await this.telegram.sendMessage(tg_chat_id, msg);
-                return new Response("OK", { status: 200 });
-            }
-            
+              }
+              return new Response("OK", { status: 200 });
+            }   
+                     
             // ── Task failed ───────────────────────────────────
             // ── Task failed ───────────────────────────────────
             case "task_failed": {
