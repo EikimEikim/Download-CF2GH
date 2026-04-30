@@ -436,9 +436,8 @@ Value:  https://my-telegram-bot.username.workers.dev
 > ✅ مطمئن شو همه Secrets (به‌جز `WORKER_URL`) ست شدن و فایل `wrangler.toml` آپدیت شده.
 
 ```
-۱. توی ریپوزیتوری GitHub (همین صفحه) بالای صفحه رو دکمه سبز رنگ کلیک کن
-۲. از منوی سمت چپ Deploy to Cloudflare رو انتخاب کن
-۳. روی Run workflow و بعد دکمه سبز Run workflow کلیک کن صبر کن حدود ۱ دقیقه — وقتی تیک سبز اومد، دیپلوی موفق بوده.
+1. توی ریپوزیتوری GitHub (همین صفحه) بالای صفحه رو دکمه سبز رنگ کلیک کن
+2. روی Run workflow و بعد دکمه سبز Run workflow کلیک کن
 ```
 
 ### بعد از دیپلوی — پیدا کردن WORKER_URL
