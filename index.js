@@ -1474,7 +1474,7 @@ class CommandHandler {
                 if (!keyArg) {
                     return this.telegram.sendMessage(chatId,
                         `⚠️ Usage: <code>/rmKey &lt;key_name&gt;</code>\n\nValid keys:\n` +
-                        `<code>admins_list</code>\n<code>queue_list</code>\n<code>current_task</code>\n<code>tree_cache</code>\n<code>allowed_groups</code>, null, messageId
+                        `<code>admins_list</code>\n<code>queue_list</code>\n<code>current_task</code>\n<code>tree_cache</code>\n<code>allowed_groups</code>`, null, messageId
                     );
                 }
                 const ok = await this.kv.clearKeyValue(keyArg);
