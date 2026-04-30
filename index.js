@@ -384,21 +384,9 @@ class KVManager {
         await this.kv.put("allowed_groups", JSON.stringify(groupsArray));
     }
 
-    async getDailyUsage() {
-        return (await this.kv.get("daily_usage", "json")) || { date: "", count: 0 };
-    }
-
-    async incrementDailyUsage() {
-        const today = new Date().toISOString().slice(0, 10);
-        let usage = await this.getDailyUsage();
-        if (usage.date !== today) usage = { date: today, count: 0 };
-        usage.count++;
-        await this.kv.put("daily_usage", JSON.stringify(usage));
-        return usage.count;
-    }
 
     async getKV() {
-        const keys = ["admins_list", "queue_list", "current_task", "tree_cache", "allowed_groups", "daily_usage"];
+        const keys = ["admins_list", "queue_list", "current_task", "tree_cache", "allowed_groups"];
         const result = {};
         for (const key of keys) {
             result[key] = (await this.kv.get(key, "json")) ?? null;
@@ -412,7 +400,7 @@ class KVManager {
     }
 
     async clearKeyValue(key) {
-        const validKeys = ["admins_list", "queue_list", "current_task", "tree_cache", "allowed_groups", "daily_usage"];
+        const validKeys = ["admins_list", "queue_list", "current_task", "tree_cache", "allowed_groups"];
         if (!validKeys.includes(key)) return false;
         const emptyVals = {
             admins_list: "[]",
@@ -420,7 +408,6 @@ class KVManager {
             current_task: "null",
             tree_cache: "[]",
             allowed_groups: "[]",
-            daily_usage: JSON.stringify({ date: "", count: 0 }),
         };
         await this.kv.put(key, emptyVals[key]);
         return true;
@@ -1194,16 +1181,13 @@ class CommandHandler {
     async processCommand(command, text, chatId, messageId, userId, isOwner, isAdmin) {
         switch (command) {
             case "/start": {
-              const usage = await this.kv.getDailyUsage();
-              const FREE_DAILY = 100000;
-              const usageBar = `📊 Daily CF Requests: ${formatMono(`${usage.count}/${FREE_DAILY}`)}`;
               const currentTask = await this.kv.getCurrentTask();
               const queue = await this.kv.getQueue();
               let statusLine = "😴 Idle — ready for links!";
               if (currentTask) statusLine = `⚡ Processing 1 download + ${queue.length} in queue`;
               return this.telegram.sendMessage(
                 chatId,
-                `🤖 <b>Download Bot Ready!</b>\n\n${statusLine}\n${usageBar}\n\nSend a link or use /link URL`,
+                `🤖 <b>Download Bot Ready!</b>\n\n${statusLine}\n\nSend a link or use /link URL`,
                 null, messageId
               );
             }
@@ -1445,7 +1429,6 @@ class CommandHandler {
               const ordered = {
                 admins_list: allData.admins_list,
                 allowed_groups: allData.allowed_groups,
-                daily_usage: allData.daily_usage,
                 queue_list: allData.queue_list,
                 current_task: allData.current_task,
                 tree_cache: (allData.tree_cache || []).map(n => ({
@@ -1491,7 +1474,7 @@ class CommandHandler {
                 if (!keyArg) {
                     return this.telegram.sendMessage(chatId,
                         `⚠️ Usage: <code>/rmKey &lt;key_name&gt;</code>\n\nValid keys:\n` +
-                        `<code>admins_list</code>\n<code>queue_list</code>\n<code>current_task</code>\n<code>tree_cache</code>\n<code>allowed_groups</code>\n<code>daily_usage</code>`, null, messageId
+                        `<code>admins_list</code>\n<code>queue_list</code>\n<code>current_task</code>\n<code>tree_cache</code>\n<code>allowed_groups</code>, null, messageId
                     );
                 }
                 const ok = await this.kv.clearKeyValue(keyArg);
@@ -1900,8 +1883,6 @@ export default {
             const handler = new CommandHandler(env, telegram, kv, ui, github);
 
             const url = new URL(request.url);
-
-            await kv.incrementDailyUsage();
 
             if (url.pathname === "/webhook") {
                 return handler.handleWebhook(request);
